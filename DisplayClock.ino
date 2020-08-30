@@ -7,6 +7,10 @@
 #define RTC_I2C_ADDR        0x68
 #define DISPLAY_I2C_ADDR    0x38
 
+#define DISPLAY_BRIGHTNESS_DAY      255     // brightness during day (6:00 - 19:00 )
+#define DISPLAY_BRIGHTNESS_NIGHT    128     // brightness at night (19:00 - 6:00)
+
+#define DISPLAY_LED_PIN     11      // LCD brightness PWM pin (drive a mosfet)
 #define STATUS_LED_PIN      13      // LED status
 #define RTC_SQW_PIN         2       // pin 2 (square wave generator -> interrupt)
 
@@ -41,6 +45,18 @@ char Digits[11][4][3] =
 volatile boolean rtcFlag = false;
 int readBuffer[16];
 int lastHour = -1, lastMinute = -1, lastSecond = -1;
+int brightness = DISPLAY_BRIGHTNESS_DAY;
+
+void SetBrightness();
+
+void CheckI2C(byte address, char* device);
+
+void PrintTime(int hour, int minute, int second);
+
+void rtcTimerIsr()
+{
+    rtcFlag = true;
+}
 
 void setup()
 {
@@ -49,6 +65,8 @@ void setup()
     digitalWrite(STATUS_LED_PIN, LOW);
     pinMode(RTC_SQW_PIN, INPUT);
     digitalWrite(RTC_SQW_PIN, HIGH);
+
+    pinMode(DISPLAY_LED_PIN, OUTPUT);
 
     Serial.begin(115200);
     while (!Serial);
@@ -62,7 +80,7 @@ void setup()
 
     // initialize the LCD
     LCD.begin(20, 4);
-    LCD.setBacklight(148);
+    SetBrightness();
 
     //  setup user characters
     for (byte i = 0; i < 8; i++)
@@ -82,21 +100,14 @@ void setup()
     attachInterrupt(digitalPinToInterrupt(RTC_SQW_PIN), rtcTimerIsr, RISING);
 }
 
-void rtcTimerIsr()
-{
-    rtcFlag = true;
-}
-
 void CheckI2C(byte address, char* device)
 {
-    int error;
-
     Serial.print("Check for ");
     Serial.print(device);
 
     Wire.begin();
     Wire.beginTransmission(address);
-    error = Wire.endTransmission();
+    int error = Wire.endTransmission();
 
     Serial.print(": ");
     Serial.print(device);
@@ -203,17 +214,26 @@ void PrintTime(int hour, int minute, int second)
     }
 }
 
+void SetBrightness()
+{
+    //Serial.print("Brightness: ");
+    //Serial.println(brightness & 0xFF);
+
+    LCD.setBacklight(brightness & 0xFF);
+    analogWrite(DISPLAY_LED_PIN, brightness & 0xFF);
+}
+
+void ReadSerial(int* values);
+
 void loop()
 {
-    int hour, minute, second;
-
     // 1s RTC timer
     if (rtcFlag)
     {
         rtcFlag = false;
-        hour = RTC.get(DS1307_HR, true);
-        minute = RTC.get(DS1307_MIN, false);
-        second = RTC.get(DS1307_SEC, false);
+        int hour = RTC.get(DS1307_HR, true);
+        int minute = RTC.get(DS1307_MIN, false);
+        int second = RTC.get(DS1307_SEC, false);
 
         /*
         Serial.print("Time: ");
@@ -226,14 +246,21 @@ void loop()
 
         PrintTime(hour, minute, second);
 
+        if (second == 0)
+        {
+            brightness = (hour >= 19 || hour <= 6) ? DISPLAY_BRIGHTNESS_NIGHT : DISPLAY_BRIGHTNESS_DAY;
+            SetBrightness();
+        }
+
         // blink status LED
         digitalWrite(STATUS_LED_PIN, HIGH);
         delay(50);
         digitalWrite(STATUS_LED_PIN, LOW);
-    }
+    }       
 
     if (Serial.available() >= 8)
     {
+        readBuffer[3] = brightness;
         ReadSerial(readBuffer);
 
         Serial.print("Setting time: ");
@@ -243,6 +270,12 @@ void loop()
         Serial.print(":");
         Serial.print(readBuffer[2]);
         Serial.println("");
+
+        if (readBuffer[3] != brightness)
+        {
+            brightness = readBuffer[3];
+            SetBrightness();
+        }
 
         RTC.stop();
 
@@ -263,10 +296,10 @@ void loop()
 
 void ReadSerial(int* values)
 {
-    static byte charIndex;
-    static byte valueIndex;
-    static char buffer[16];
-
+    char buffer[16];    
+    byte charIndex = 0;
+    byte valueIndex = 0;
+    
     while (Serial.available())
     {
         char c = Serial.read();
@@ -293,6 +326,9 @@ void ReadSerial(int* values)
                 // buffer character
                 buffer[charIndex++] = c;
             }
-        }
+        }        
     }
+    
+    buffer[++charIndex] = '\0';
+    values[valueIndex] = atoi(buffer);
 }
