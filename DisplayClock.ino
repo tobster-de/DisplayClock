@@ -7,8 +7,8 @@
 #define RTC_I2C_ADDR        0x68
 #define DISPLAY_I2C_ADDR    0x38
 
-#define DISPLAY_BRIGHTNESS_DAY      255     // brightness during day (6:00 - 19:00 )
-#define DISPLAY_BRIGHTNESS_NIGHT    128     // brightness at night (19:00 - 6:00)
+#define DISPLAY_BRIGHTNESS_DAY      192     // brightness during day (6:00 - 19:00 )
+#define DISPLAY_BRIGHTNESS_NIGHT     64     // brightness at night (19:00 - 6:00)
 
 #define DISPLAY_LED_PIN     11      // LCD brightness PWM pin (drive a mosfet)
 #define STATUS_LED_PIN      13      // LED status
@@ -219,8 +219,11 @@ void SetBrightness()
     //Serial.print("Brightness: ");
     //Serial.println(brightness & 0xFF);
 
+    // turn completely on/off using the PCF IC
     LCD.setBacklight(brightness & 0xFF);
-    analogWrite(DISPLAY_LED_PIN, brightness & 0xFF);
+
+    // use PWM to drive a P-CH mosfet, hence the inverted value
+    analogWrite(DISPLAY_LED_PIN, 0xFF - (brightness & 0xFF));
 }
 
 void ReadSerial(int* values);
