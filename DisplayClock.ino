@@ -1,6 +1,10 @@
-#include <DS1307.h>
+#include <DS1307RTC.h>
+#include <TimeLib.h>
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
+#include <SerialCommand.h>
+
+#include "DaylightSavingsTime.h"
 
 //#define SCAN_I2C
 
@@ -15,6 +19,7 @@
 #define RTC_SQW_PIN         2       // pin 2 (square wave generator -> interrupt)
 
 LiquidCrystal_PCF8574 LCD(DISPLAY_I2C_ADDR);
+SerialCommand SC;
 
 byte UChars[8][8] =
 { {0, 0, 0, 0, 1, 3, 7, 15},
@@ -46,12 +51,17 @@ volatile boolean rtcFlag = false;
 int readBuffer[16];
 int lastHour = -1, lastMinute = -1, lastSecond = -1;
 int brightness = DISPLAY_BRIGHTNESS_DAY;
+int timezone = 1;
 
 void SetBrightness();
 
 void CheckI2C(byte address, char* device);
 
-void PrintTime(int hour, int minute, int second);
+void PrintTime();
+
+void unrecognizedCommandHelp();
+void timeCommand();
+void dateCommand();
 
 void rtcTimerIsr()
 {
@@ -89,15 +99,164 @@ void setup()
     }
 
     LCD.clear();
-    PrintTime(0, 0, 0);
 
-    Serial.println("To set time: send \"hh:mm:ss\"");
+    // the function to get the time from the RTC
+    setSyncProvider(syncRTC);
+    if (timeStatus() != timeSet)
+        Serial.println("Unable to sync with the RTC");
+    else
+        Serial.println("RTC has set the system time");
+
+    PrintTime();
+
+    SC.addCommand("time", timeCommand);                 // output/set time
+    SC.addCommand("date", dateCommand);                 // output/set date
+    SC.addDefaultHandler(unrecognizedCommandHelp);      // Handler for command that isn't matched
+
+    unrecognizedCommandHelp();
 
     // 1Hz square wave (every second)
-    //RTC.start();
-    RTC.SetOutput(DS1307_SQW1HZ);
+    RTC.setSqwOutput(sqw1Hz);
 
     attachInterrupt(digitalPinToInterrupt(RTC_SQW_PIN), rtcTimerIsr, RISING);
+}
+
+// This gets set as the default handler, and gets called when no other command matches. 
+void unrecognizedCommandHelp()
+{
+    Serial.println("");
+    Serial.println("Valid commands are:");
+    Serial.println("  time [hh mm [ss=0] [tz=1]]:");
+    Serial.println("    outputs current system time/date, sets time to hh:mm:ss - timezone=tz");
+    Serial.println("  date [dd MM yyyy]:");
+    Serial.println("    outputs current system time/date, sets date to dd:MM:yyyy");
+}
+
+void SerialOutputTime()
+{
+    time_t time = now() + SECS_PER_HOUR * timezone;
+    bool isDST = isDayLightSavingsTime_EU(time, timezone);
+    if (isDST)
+    {
+        time += SECS_PER_HOUR;
+    }
+
+    int tHour = hour(time);
+    int tMinute = minute(time);
+    int tSecond = second(time);
+
+    Serial.print("Time: ");
+    if (tHour < 10) Serial.print("0");
+    Serial.print(tHour);
+    Serial.print(":");
+    if (tMinute < 10) Serial.print("0");
+    Serial.print(tMinute);
+    Serial.print(":");
+    if (tSecond < 10) Serial.print("0");
+    Serial.print(tSecond);
+    Serial.print(", timezone ");
+    if (timezone > 0) Serial.print("+");
+    Serial.print(timezone);
+    if (isDST) Serial.print(", DST");
+    Serial.println("");
+
+    int tDay = day(time);
+    int tMonth = month(time);
+    int tYear = year(time);
+
+    Serial.print("Date: ");
+    if (tDay < 10) Serial.print("0");
+    Serial.print(tDay);
+    Serial.print(".");
+    if (tMonth < 10) Serial.print("0");
+    Serial.print(tMonth);
+    Serial.print(".");
+    Serial.println(tYear);
+
+    Serial.flush();
+}
+
+void timeCommand()
+{
+    int val[4];
+    char *arg;
+    TimeElements time_elements;
+    boolean argsgood = true;
+
+    breakTime(now(), time_elements);
+    val[2] = 0;
+    val[3] = 1;
+
+    for (int i = 0; i < 4; i++)
+    {
+        arg = SC.next();
+        if (arg != NULL)
+        {
+            val[i] = atoi(arg);
+        }
+        else if (i < 2)
+        {
+            argsgood = false;
+        }
+    }
+
+    if (argsgood)
+    {
+        time_elements.Hour = val[0];
+        time_elements.Minute = val[1];
+        time_elements.Second = val[2];
+        timezone = val[3];
+
+        // to UTC
+        time_t newtime = makeTime(time_elements) - SECS_PER_HOUR * timezone;
+        bool isDST = isDayLightSavingsTime_EU(newtime, timezone);
+        if (isDST)
+        {
+            newtime -= SECS_PER_HOUR;
+        }
+
+        RTC.set(newtime);   // set the RTC and the system time to the received value
+        setTime(newtime);
+    }
+
+    SerialOutputTime();
+}
+
+void dateCommand()
+{
+    int val[3];
+    char *arg;
+    TimeElements time_elements;
+    boolean argsgood = true;
+
+    breakTime(now(), time_elements);
+
+    for (int i = 0; i < 3; i++)
+    {
+        arg = SC.next();
+        if (arg != NULL)
+        {
+            val[i] = atoi(arg);
+        }
+        else
+        {
+            argsgood = false;
+        }
+    }
+
+    if (argsgood)
+    {
+        time_elements.Day = val[0];
+        time_elements.Month = val[1];
+        time_elements.Year = CalendarYrToTm(val[2]);
+
+        time_t newtime = makeTime(time_elements);
+
+        RTC.set(newtime);   // set the RTC and the system time to the received value
+        setTime(newtime);
+    }
+
+    SerialOutputTime();
 }
 
 void CheckI2C(byte address, char* device)
@@ -171,32 +330,42 @@ void PrintDigit(byte col, byte digit)
     }
 }
 
-void PrintTime(int hour, int minute, int second)
+void PrintTime()
 {
+    time_t time = now() + SECS_PER_HOUR * timezone;
+    if (isDayLightSavingsTime_EU(time, timezone))
+    {
+        time += SECS_PER_HOUR;
+    }
+
+    int tHour = hour(time);
+    int tMinute = minute(time);
+    int tSecond = second(time);
+
     static char string[10];
 
-    if (hour != lastHour)
+    if (tHour != lastHour)
     {
-        lastHour = hour;
+        lastHour = tHour;
 
-        PrintDigit(1, hour / 10);
-        PrintDigit(4, hour % 10);
+        PrintDigit(1, tHour / 10);
+        PrintDigit(4, tHour % 10);
     }
 
-    if (minute != lastMinute)
+    if (tMinute != lastMinute)
     {
-        lastMinute = minute;
+        lastMinute = tMinute;
 
-        PrintDigit(10, minute / 10);
-        PrintDigit(13, minute % 10);
+        PrintDigit(10, tMinute / 10);
+        PrintDigit(13, tMinute % 10);
     }
 
-    if (second != lastSecond)
+    if (tSecond != lastSecond)
     {
-        lastSecond = second;
+        lastSecond = tSecond;
 
         LCD.setCursor(17, 4);
-        itoa(second % 60, string, 10);
+        itoa(tSecond % 60, string, 10);
 
         if (strlen(string) == 1)
         {
@@ -205,7 +374,7 @@ void PrintTime(int hour, int minute, int second)
         LCD.print(string);
 
         // blink seperator
-        char sig = (second % 2 == 0) ? 'o' : (char)32;
+        char sig = (tSecond % 2 == 0) ? 'o' : (char)32;
 
         LCD.setCursor(8, 1);
         LCD.print(sig);
@@ -226,32 +395,21 @@ void SetBrightness()
     analogWrite(DISPLAY_LED_PIN, 0xFF - (brightness & 0xFF));
 }
 
-void ReadSerial(int* values);
-
 void loop()
 {
     // 1s RTC timer
     if (rtcFlag)
     {
         rtcFlag = false;
-        int hour = RTC.get(DS1307_HR, true);
-        int minute = RTC.get(DS1307_MIN, false);
-        int second = RTC.get(DS1307_SEC, false);
+        int tHour = hour();
+        int tMinute = minute();
+        int tSecond = second();
 
-        /*
-        Serial.print("Time: ");
-        Serial.print(hour);
-        Serial.print(":");
-        Serial.print(minute);
-        Serial.print(":");
-        Serial.println(second);
-        */
+        PrintTime();
 
-        PrintTime(hour, minute, second);
-
-        if (second == 0)
+        if (tSecond == 0)
         {
-            brightness = (hour >= 19 || hour <= 6) ? DISPLAY_BRIGHTNESS_NIGHT : DISPLAY_BRIGHTNESS_DAY;
+            brightness = (tHour >= 19 || tHour <= 6) ? DISPLAY_BRIGHTNESS_NIGHT : DISPLAY_BRIGHTNESS_DAY;
             SetBrightness();
         }
 
@@ -259,79 +417,7 @@ void loop()
         digitalWrite(STATUS_LED_PIN, HIGH);
         delay(50);
         digitalWrite(STATUS_LED_PIN, LOW);
-    }       
-
-    if (Serial.available() >= 8)
-    {
-        readBuffer[3] = brightness;
-        ReadSerial(readBuffer);
-
-        Serial.print("Setting time: ");
-        Serial.print(readBuffer[0]);
-        Serial.print(":");
-        Serial.print(readBuffer[1]);
-        Serial.print(":");
-        Serial.print(readBuffer[2]);
-        Serial.println("");
-
-        if (readBuffer[3] != brightness)
-        {
-            brightness = readBuffer[3];
-            SetBrightness();
-        }
-
-        RTC.stop();
-
-        RTC.set(DS1307_HR, readBuffer[0]);
-        RTC.set(DS1307_MIN, readBuffer[1]);
-        RTC.set(DS1307_SEC, readBuffer[2]);
-
-        //RTC.set(DS1307_SEC, rtcBuffer[6]);
-        //RTC.set(DS1307_MIN, rtcBuffer[5]);
-        //RTC.set(DS1307_HR, rtcBuffer[4]);
-        //RTC.set(DS1307_DOW, rtcBuffer[3]);
-        //RTC.set(DS1307_DATE, rtcBuffer[2]);
-        //RTC.set(DS1307_MTH, rtcBuffer[1]);
-        //RTC.set(DS1307_YR, rtcBuffer[0]);
-        RTC.start();
     }
-}
 
-void ReadSerial(int* values)
-{
-    char buffer[16];    
-    byte charIndex = 0;
-    byte valueIndex = 0;
-    
-    while (Serial.available())
-    {
-        char c = Serial.read();
-
-        if (c == '\n')
-        {
-            buffer[charIndex] = '\0';
-            values[valueIndex] = atoi(buffer);
-
-            return;
-        }
-        else if (c >= 32)
-        {
-            if (c == ':' || c == 32)
-            {
-                buffer[charIndex] = '\0';
-                values[valueIndex] = atoi(buffer);
-
-                valueIndex++;
-                charIndex = 0;
-            }
-            else if (charIndex < sizeof(buffer) - 1)
-            {
-                // buffer character
-                buffer[charIndex++] = c;
-            }
-        }        
-    }
-    
-    buffer[++charIndex] = '\0';
-    values[valueIndex] = atoi(buffer);
+    SC.readSerial();    // process serial commands
 }

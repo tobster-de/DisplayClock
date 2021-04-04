@@ -35,6 +35,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
+  <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
@@ -48,7 +49,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\DisplayClock;$(ProjectDir)..\libraries\DS1307;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\libraries\Wire\src;$(ProjectDir)..\libraries\LiquidCrystal_PCF8574-1.1.0\src;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\libraries\Wire\src\utility;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\cores\arduino;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\variants\eightanaloginputs;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\\lib\gcc\avr\7.3.0\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\\lib\gcc\avr\7.3.0\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include-fixed;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include\avr;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.2\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.2\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\DisplayClock;$(ProjectDir)..\libraries\DS1307RTC;$(ProjectDir)..\libraries\Time;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\libraries\Wire\src;$(ProjectDir)..\libraries\LiquidCrystal_PCF8574-1.1.0\src;$(ProjectDir)..\libraries\ArduinoSerialCommand;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\libraries\SoftwareSerial\src;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\libraries\Wire\src\utility;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\cores\arduino;$(ProjectDir)..\..\arduino-1.6.12\hardware\arduino\avr\variants\eightanaloginputs;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\\lib\gcc\avr\7.3.0\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\\lib\gcc\avr\7.3.0\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include-fixed;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\avr\include\avr;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.2\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.2\include;$(ProjectDir)..\..\arduino-1.6.12\hardware\tools\avr\lib\gcc\avr\4.9.3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>$(ProjectDir)__vm\.DisplayClock.vsarduino.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
       <PreprocessorDefinitions>__AVR_atmega328p__;__AVR_ATmega328P__;__AVR_ATmega328p__;F_CPU=16000000L;ARDUINO=106012;ARDUINO_AVR_NANO;ARDUINO_ARCH_AVR;__cplusplus=201103L;_VMICRO_INTELLISENSE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -80,7 +81,11 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DaylightSavingsTime.h" />
     <ClInclude Include="__vm\.DisplayClock.vsarduino.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="DaylightSavingsTime.cpp" />
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
